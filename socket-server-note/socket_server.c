@@ -12,56 +12,57 @@
 #include <assert.h>
 #include <string.h>
 
-#define MAX_INFO 128
-// MAX_SOCKET will be 2^MAX_SOCKET_P
-#define MAX_SOCKET_P 16
-#define MAX_EVENT 64				// 用于epoll_wait的第三个参数，即每次epoll返回的最多事件数
-#define MIN_READ_BUFFER 64			// read最小分配的缓冲区大小
-									// ioctl()/FIONREAD
-									// readv
-#define SOCKET_TYPE_INVALID 0		// 无效的套接字
-#define SOCKET_TYPE_RESERVE 1		// 预留，已被申请，即将投入使用
-#define SOCKET_TYPE_PLISTEN 2		// 监听套接字，未加入epoll管理
-#define SOCKET_TYPE_LISTEN 3		// 监听套接字，已加入epoll管理
-#define SOCKET_TYPE_CONNECTING 4	// 尝试连接中的套接字
-#define SOCKET_TYPE_CONNECTED 5		// 已连接套接，主动或被动(connect,accept成功，并已加入epoll管理)
-#define SOCKET_TYPE_HALFCLOSE 6		// 应用层已发起关闭套接字请求，应用层发送缓冲区尚未发送完，未调用close
-#define SOCKET_TYPE_PACCEPT 7		// accept返回的已连接套接字，但未加入epoll管理
-#define SOCKET_TYPE_BIND 8			// 其它类型的文件描述符，比如stdin,stdout等
+#define MAX_INFO		128
 
-#define MAX_SOCKET (1<<MAX_SOCKET_P)	// 最多支持64K个socket
+#define MAX_SOCKET_P		16		// MAX_SOCKET will be 2^MAX_SOCKET_P
+#define MAX_EVENT		64		// 用于epoll_wait的第三个参数，即每次epoll返回的最多事件数
+#define MIN_READ_BUFFER		64		// read最小分配的缓冲区大小
+
+// ioctl()/FIONREAD
+// readv
+#define SOCKET_TYPE_INVALID	0		// 无效的套接字
+#define SOCKET_TYPE_RESERVE	1		// 预留，已被申请，即将投入使用
+#define SOCKET_TYPE_PLISTEN	2		// 监听套接字，未加入epoll管理
+#define SOCKET_TYPE_LISTEN	3		// 监听套接字，已加入epoll管理
+#define SOCKET_TYPE_CONNECTING	4		// 尝试连接中的套接字
+#define SOCKET_TYPE_CONNECTED	5		// 已连接套接，主动或被动(connect,accept成功，并已加入epoll管理)
+#define SOCKET_TYPE_HALFCLOSE	6		// 应用层已发起关闭套接字请求，应用层发送缓冲区尚未发送完，未调用close
+#define SOCKET_TYPE_PACCEPT	7		// accept返回的已连接套接字，但未加入epoll管理
+#define SOCKET_TYPE_BIND	8		// 其它类型的文件描述符，比如stdin,stdout等
+
+#define MAX_SOCKET		(1 << MAX_SOCKET_P)	// 最多支持64K个socket
 
 struct write_buffer {
-	struct write_buffer * next;
-	char *ptr;		// 指向当前块未发送缓冲区首字节
-	int sz;			// 当前块未发送的字节数
-	void *buffer;	// 发送缓冲区
+	struct write_buffer	*next;
+	char			*ptr;		// 指向当前块未发送缓冲区首字节
+	int			sz;		// 当前块未发送的字节数
+	void			*buffer;	// 发送缓冲区
 };
 
 // 应用层对socket的抽象
 struct socket {
-	int fd;		// 文件描述符
-	int id;		// 应用层维护的一个与fd相对应的id
-	int type;	// socket类型(或状态)
-	int size;	// 下一次read操作要分配的缓冲区大小
-	int64_t wb_size;	// 发送缓冲区中未发送的字节数
-	uintptr_t opaque;	// 在skynet中用于保存服务handle
-	struct write_buffer * head;		// 发送缓冲区链表头指针
-	struct write_buffer * tail;		// 发送缓冲区链表尾指针
+	int			fd;		// 文件描述符
+	int			id;		// 应用层维护的一个与fd相对应的id
+	int			type;		// socket类型(或状态)
+	int			size;		// 下一次read操作要分配的缓冲区大小
+	int64_t			wb_size;	// 发送缓冲区中未发送的字节数
+	uintptr_t		opaque;		// 在skynet中用于保存服务handle
+	struct write_buffer	*head;		// 发送缓冲区链表头指针
+	struct write_buffer	*tail;		// 发送缓冲区链表尾指针
 };
 
 struct socket_server {
-	int recvctrl_fd;		// 管道读端，用于接受控制命令
-	int sendctrl_fd;		// 管道写端，用于发送控制命令
-	int checkctrl;			// 是否检查控制命令
-	poll_fd event_fd;		// epoll fd
-	int alloc_id;			// 用于分配id
-	int event_n;			// epoll_wait返回的事件个数
-	int event_index;		// 当前处理的事件序号，从0开始
-	struct event ev[MAX_EVENT];			// 用于epoll_wait
-	struct socket slot[MAX_SOCKET];		// 应用层预先分配的socket数组(即socket池)
-	char buffer[MAX_INFO];				// 临时数据，比如保存新建连接的对等端的地址信息
-	fd_set rfds;		// 用于select
+	int			recvctrl_fd;	// 管道读端，用于接受控制命令
+	int			sendctrl_fd;	// 管道写端，用于发送控制命令
+	int			checkctrl;	// 是否检查控制命令
+	poll_fd			event_fd;	// epoll fd
+	int			alloc_id;	// 用于分配id
+	int			event_n;	// epoll_wait返回的事件个数
+	int			event_index;	// 当前处理的事件序号，从0开始
+	struct event		ev[MAX_EVENT];		// 用于epoll_wait
+	struct socket		slot[MAX_SOCKET];	// 应用层预先分配的socket数组(即socket池)
+	char			buffer[MAX_INFO];	// 临时数据，比如保存新建连接的对等端的地址信息
+	fd_set			rfds;		// 用于select
 };
 
 // 以下6个结构体是控制命令数据包包体结构
@@ -103,28 +104,28 @@ struct request_start {
 
 // 控制命令请求包
 struct request_package {
-	uint8_t header[8];	// 6 bytes dummy，header[0]~header[5]未使用,header[6] for type,header[7] for len，len是指包体长度
+	uint8_t	header[8];			// 6 bytes dummy，header[0]~header[5]未使用,header[6] for type,header[7] for len，len是指包体长度
 	union {
 		char buffer[256];
-		struct request_open open;		// socket_server_connect
-		struct request_send send;		// socket_server_send
-		struct request_close close;		// socket_server_close
-		struct request_listen listen;	// socket_server_listen
-		struct request_bind bind;		// socket_server_bind
-		struct request_start start;		// socket_server_start
+		struct request_open	open;	// socket_server_connect
+		struct request_send	send;	// socket_server_send
+		struct request_close	close;	// socket_server_close
+		struct request_listen	listen;	// socket_server_listen
+		struct request_bind	bind;	// socket_server_bind
+		struct request_start	start;	// socket_server_start
 	} u;
 	uint8_t dummy[256];
 };
 
 // 网际IP地址
 union sockaddr_all {
-	struct sockaddr s;
-	struct sockaddr_in v4;
-	struct sockaddr_in6 v6;
+	struct sockaddr		s;
+	struct sockaddr_in	v4;
+	struct sockaddr_in6	v6;
 };
 
-#define MALLOC malloc
-#define FREE free
+#define MALLOC	malloc
+#define FREE	free
 
 static void
 socket_keepalive(int fd) {
@@ -155,6 +156,7 @@ reserve_id(struct socket_server *ss) {
 	return -1;
 }
 
+// 创建一个socket_server对象: 里面包含epoll句柄，以及它管理的socket对象池，以及一个管道，epoll关注管道读端的可读事件
 struct socket_server * 
 socket_server_create() {
 	int i;
@@ -460,7 +462,7 @@ static int
 listen_socket(struct socket_server *ss, struct request_listen * request, struct socket_message *result) {
 	int id = request->id;
 	int listen_fd = request->fd;
-	// 初始化新申请到的socket
+	// 初始化新申请到的socket，注意下面函数最后一个参数false
 	struct socket *s = new_fd(ss, id, listen_fd, request->opaque, false);
 	if (s == NULL) {
 		goto _failed;
@@ -589,10 +591,11 @@ ctrl_cmd(struct socket_server *ss, struct socket_message *result) {
 	block_readpipe(fd, header, sizeof(header));		// 包头
 	int type = header[0];
 	int len = header[1];
-	block_readpipe(fd, buffer, len);		// 包体
+	block_readpipe(fd, buffer, len);			// 包体
 	// ctrl command only exist in local fd, so don't worry about endian.
 	switch (type) {
 	case 'S':
+		// 正常流程下，下面函数调用后，socket_server对象的epoll会关注socket
 		return start_socket(ss,(struct request_start *)buffer, result);
 	case 'B':
 		return bind_socket(ss,(struct request_bind *)buffer, result);
@@ -735,7 +738,7 @@ report_accept(struct socket_server *ss, struct socket *s, struct socket_message 
 int 
 socket_server_poll(struct socket_server *ss, struct socket_message * result, int * more) {
 	for (;;) {
-		// 控制命令的检查没有纳入到epoll管理，目的是为了提高控制命令检查频率
+		// 控制命令的检查没有纳入到epoll管理(本质是读取管道)，目的是为了提高控制命令检查频率
 		if (ss->checkctrl) {
 			if (has_cmd(ss)) {
 				int type = ctrl_cmd(ss, result);
@@ -917,6 +920,13 @@ _failed:
 	return -1;
 }
 
+// 函数分3个步骤:
+// 1.创建socket, bind然后listen, 句柄是fd
+// 2.从socket池中获取一个空的socket，得到id
+// 3.构造一个对象，里面包含socket句柄和socket池中对象id，然后发给管道
+// 因为epoll关注了管道读端的可读事件，所以epoll马上可以读到该事件，至于opaque，可以假象系统中有一个listen的actor对象，opaque是它的句柄，这里应该只是方便调试
+// 返回值是socket池中对象id
+// 到这里只是创建了socket，但是epoll还没有关注这个句柄
 int 
 socket_server_listen(struct socket_server *ss, uintptr_t opaque, const char * addr, int port, int backlog) {
 	int fd = do_listen(addr, port, backlog);
@@ -943,6 +953,7 @@ socket_server_bind(struct socket_server *ss, uintptr_t opaque, int fd) {
 	return id;
 }
 
+// 发消息到管道，epoll对象会收到消息再处理
 void 
 socket_server_start(struct socket_server *ss, uintptr_t opaque, int id) {
 	struct request_package request;

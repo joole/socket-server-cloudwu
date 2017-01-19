@@ -1,0 +1,3 @@
+[submodule "socket-server"]
+	path = socket-server
+	url = https://github.com/cloudwu/socket-server.git

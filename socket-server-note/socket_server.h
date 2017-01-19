@@ -14,9 +14,9 @@
 struct socket_server;
 
 struct socket_message {
-	int		id;
+	int		id;			// socket池的index，用来找到socket数据结构
 	uintptr_t	opaque;			// 在skynet中用于保存服务handle
-	int		ud;			// for accept,ud是新连接的id
+	int		ud;			// for accept,ud是新连接的id; for data, ud is size of data 
 	char		*data;
 };
 

@@ -367,27 +367,26 @@ send_buffer(struct socket_server *ss, struct socket *s, struct socket_message *r
 				switch(errno) {
 				case EINTR:
 					continue;
-				case EAGAIN:	// 内核发送缓冲区已满
+				case EAGAIN:			// 内核发送缓冲区已满
 					return -1;
 				}
 				force_close(ss,s, result);	// 发生严重错误，强制关闭
 				return SOCKET_CLOSE;
 			}
-			s->wb_size -= sz;		// 发送缓冲区未发的字节数需更新
-			if (sz != tmp->sz) {	// 未将该块缓冲区完全发送出去
-				tmp->ptr += sz;		// 该块缓冲区未发送数据首地址更新
-				tmp->sz -= sz;		// 当前块未发送字节数更新
+			s->wb_size -= sz;			// 发送缓冲区未发的字节数需更新
+			if (sz != tmp->sz) {			// 未将该块缓冲区完全发送出去
+				tmp->ptr += sz;			// 该块缓冲区未发送数据首地址更新
+				tmp->sz -= sz;			// 当前块未发送字节数更新
 				return -1;
 			}
 			break;
 		}
-		s->head = tmp->next;	// 取下一块缓冲区
-		// 销毁已发送的缓冲区块
-		FREE(tmp->buffer);
+		s->head = tmp->next;				// 取下一块缓冲区
+		FREE(tmp->buffer);				// 销毁已发送的缓冲区块
 		FREE(tmp);
 	}
 	s->tail = NULL;
-	sp_write(ss->event_fd, s->fd, s, false);	// 应用层发送缓冲区数据发完，取消关注可写事件
+	sp_write(ss->event_fd, s->fd, s, false);		// 应用层发送缓冲区数据发完，取消关注可写事件
 
 	// 半关闭状态socket不可再调用send_buffer，如果发现这样做，直接强制关闭
 	if (s->type == SOCKET_TYPE_HALFCLOSE) {
@@ -750,6 +749,10 @@ socket_server_poll(struct socket_server *ss, struct socket_message * result, int
 				ss->checkctrl = 0;
 			}
 		}
+
+		// 从epoll中获取事件(所有socket事件), 每次最多获取8个，存到ss->ev，比如收到5个消息，event_index是0，event_n是5
+		// 然后调整到下面的default分支，处理e->write和e->read，每次处理一个，处理完event_index++
+		// 然后重新到函数最开始的循环，继续event_index=1的事件，一直到event_index=5表示5个消息处理完了，然后epoll再取消息
 		if (ss->event_index == ss->event_n) {
 			ss->event_n = sp_wait(ss->event_fd, ss->ev, MAX_EVENT);
 			ss->checkctrl = 1;
@@ -762,6 +765,8 @@ socket_server_poll(struct socket_server *ss, struct socket_message * result, int
 				return -1;
 			}
 		}
+
+		// 处理从epoll消息得到的某个event事件
 		struct event *e = &ss->ev[ss->event_index++];
 		struct socket *s = e->s;
 		if (s == NULL) {
